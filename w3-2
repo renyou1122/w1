@@ -1,0 +1,84 @@
+from brython_robot4 import init, load_scene_from_url, get_url_parameter
+from browser import aio
+
+# 機器人行為腳本
+async def robot_actions(robot):
+    print("開始執行機器人程式，採垂直 (S字形) 巡邏方式採收胡蘿蔔。")
+
+    async def collect_carrots():
+        # 在當前格子採收所有胡蘿蔔 (假設 'pale_grass' 表示有胡蘿蔔)
+        while robot.background_is("pale_grass"):
+            await robot.pick_carrot()
+
+    async def turn_right():
+        # 透過三次左轉實現右轉
+        await robot.turn_left()
+        await robot.turn_left()
+        await robot.turn_left()
+
+    # ----------------------------------------------------
+    # 主巡邏迴圈：垂直 (S字形) 採收邏輯
+    
+    # 1. 初始設定: 機器人預設朝東 (E)。先轉向北 (N) 準備向上移動。
+    await robot.turn_left() # E -> N
+    
+    is_moving_north = True # 設定初始方向：第一列向上 (N) 走
+    
+    # 迴圈直到無法再向右移動 (即到達世界最右邊)
+    while True:
+        # A. 採收當前格子 (起始點)
+        await collect_carrots()
+        
+        # B. 沿當前方向 (N 或 S) 移動到底
+        # 持續向前移動，直到前方遇到障礙 (牆壁或世界邊界)
+        while robot.front_is_clear():
+            await robot.move(1)
+            await collect_carrots()
+        
+        # C. 檢查是否完成巡邏 (無法向右移動)
+        # 轉向東 (E) 準備檢查並移動到下一列
+        if is_moving_north:
+            await turn_right() # N -> E
+        else:
+            await robot.turn_left() # S -> E
+        
+        # 檢查右邊 (東) 是否暢通。如果前方是牆壁，表示到達最右邊，巡邏完成。
+        if not robot.front_is_clear():
+            break # 巡邏完成
+        
+        # D. 向右移動一步 (水平移動)
+        await robot.move(1)
+        await collect_carrots()
+
+        # E. 準備下一個方向 (調整為 N 或 S)
+        if is_moving_north:
+            # 剛才向上走 (N)，現在面向 E，準備往南走 (S)
+            await turn_right() # E -> S
+            is_moving_north = False
+        else:
+            # 剛才向下走 (S)，現在面向 E，準備往北走 (N)
+            await robot.turn_left() # E -> N
+            is_moving_north = True
+            
+    # ----------------------------------------------------
+    
+    # 所有的動作都結束後
+    print("所有可達格子都已探索完畢。")
+    print(f"程式執行完畢。總共採收了 {robot.carrots_collected} 個胡蘿蔔。")
+
+# 程式啟動點
+async def main():
+    world_url = get_url_parameter('world')
+    if world_url:
+        scene_data = await load_scene_from_url(world_url)
+        # 設定機器人容量上限為 50
+        world, robot = init(scene_data, robot_config={"max_carrots": 50})
+    else:
+        # 預設場景也設定容量上限
+        world, robot = init(robot_config={"max_carrots": 50})
+
+    if robot:
+        await robot_actions(robot)
+
+# 啟動主程式
+aio.run(main())
