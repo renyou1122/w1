@@ -1,0 +1,80 @@
+from brython_robot4 import init, load_scene_from_url, get_url_parameter
+from browser import aio
+
+# 機器人行為腳本
+async def robot_actions(robot):
+    print("開始執行機器人程式，採水平 (Z字形) 巡邏方式採收胡蘿蔔。")
+
+    async def collect_carrots():
+        # 在當前格子採收所有胡蘿蔔 (假設 'pale_grass' 表示有胡蘿蔔)
+        while robot.background_is("pale_grass"):
+            await robot.pick_carrot()
+
+    async def turn_right():
+        # 透過三次左轉實現右轉
+        await robot.turn_left()
+        await robot.turn_left()
+        await robot.turn_left()
+
+    # ----------------------------------------------------
+    # 主巡邏迴圈：水平 (Z字形) 採收邏輯
+    is_moving_east = True # 設定初始方向：第一行向東 (E) 走
+    
+    # 迴圈直到無法再向上移動 (即到達世界頂端)
+    while True:
+        # A. 採收當前格子 (起始點)
+        await collect_carrots()
+        
+        # B. 沿當前方向移動到底
+        # 持續向前移動，直到前方遇到障礙 (牆壁或世界邊界)
+        while robot.front_is_clear():
+            await robot.move(1)
+            await collect_carrots()
+        
+        # C. 檢查是否完成巡邏 (無法向上移動)
+        # 轉向北 (N) 準備檢查並移動到下一行
+        if is_moving_east:
+            await robot.turn_left() # E -> N
+        else:
+            await turn_right()      # W -> N
+        
+        # 檢查上方是否暢通。如果前方是牆壁，表示到達頂部，巡邏完成。
+        if not robot.front_is_clear():
+            break # 巡邏完成
+        
+        # D. 向上移動一步
+        await robot.move(1)
+        await collect_carrots()
+
+        # E. 準備下一個方向 (調整為 W 或 E)
+        if is_moving_east:
+            # 剛才向東走 (E)，現在在北邊 (N)，準備往西走 (W)
+            await robot.turn_left() # N -> W
+            is_moving_east = False
+        else:
+            # 剛才向西走 (W)，現在在北邊 (N)，準備往東走 (E)
+            await turn_right() # N -> E
+            is_moving_east = True
+
+    # ----------------------------------------------------
+    
+    # 所有的動作都結束後
+    print("所有可達格子都已探索完畢。")
+    print(f"程式執行完畢。總共採收了 {robot.carrots_collected} 個胡蘿蔔。")
+
+# 程式啟動點
+async def main():
+    world_url = get_url_parameter('world')
+    if world_url:
+        scene_data = await load_scene_from_url(world_url)
+        # 設定機器人容量上限為 50
+        world, robot = init(scene_data, robot_config={"max_carrots": 50})
+    else:
+        # 預設場景也設定容量上限
+        world, robot = init(robot_config={"max_carrots": 50})
+
+    if robot:
+        await robot_actions(robot)
+
+# 啟動主程式
+aio.run(main())
